@@ -5,7 +5,6 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,15 +17,13 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -36,7 +33,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -74,18 +71,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun CharacterEditor(store: ProjectStore) {
     var project by remember {
-        mutableStateOf(
-            store.load() ?: CharacterProject()
-        )
+        mutableStateOf(store.load() ?: CharacterProject())
     }
 
-    var statusMessage by remember {
-        mutableStateOf("Ready")
-    }
-
-    var refreshKey by remember {
-        mutableStateOf(0)
-    }
+    var statusMessage by remember { mutableStateOf("Ready") }
+    var refreshKey by remember { mutableStateOf(0) }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -114,7 +104,7 @@ private fun CharacterEditor(store: ProjectStore) {
                     ) {
                         androidx.compose.material3.Icon(
                             imageVector = Icons.Default.Save,
-                            contentDescription = null,
+                            contentDescription = "Save project",
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(4.dp))
@@ -140,7 +130,7 @@ private fun CharacterEditor(store: ProjectStore) {
                     ) {
                         androidx.compose.material3.Icon(
                             imageVector = Icons.Default.FileOpen,
-                            contentDescription = null,
+                            contentDescription = "Load project",
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(4.dp))
@@ -154,6 +144,7 @@ private fun CharacterEditor(store: ProjectStore) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
+            state = rememberLazyListState(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             item {
@@ -162,35 +153,24 @@ private fun CharacterEditor(store: ProjectStore) {
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
-                    ) {
+                    Column(Modifier.padding(12.dp)) {
                         Text(
                             text = project.name,
                             style = MaterialTheme.typography.titleMedium
                         )
-
                         Text(
                             text = "Drag the viewport to rotate the mannequin.",
                             style = MaterialTheme.typography.bodySmall
                         )
-
                         Spacer(Modifier.height(8.dp))
 
-                        // The renderer is a basic prototype mannequin,
-                        // not a production-quality human mesh.
                         key(refreshKey) {
                             AndroidView(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(300.dp),
                                 factory = { context ->
-                                    CharacterSurface(context).apply {
-                                        setCharacter(project)
-                                    }
-                                },
-                                update = { view ->
-                                    view.setCharacter(project)
+                                    CharacterSurface(context)
                                 }
                             )
                         }
@@ -204,53 +184,27 @@ private fun CharacterEditor(store: ProjectStore) {
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
-                    ) {
+                    Column(Modifier.padding(12.dp)) {
                         Text(
                             text = "Body",
                             style = MaterialTheme.typography.titleMedium
                         )
 
-                        MorphSlider(
-                            label = "Height",
-                            value = project.height,
-                            onValueChange = { value ->
-                                project = project.copy(height = value)
-                            }
-                        )
-
-                        MorphSlider(
-                            label = "Build",
-                            value = project.build,
-                            onValueChange = { value ->
-                                project = project.copy(build = value)
-                            }
-                        )
-
-                        MorphSlider(
-                            label = "Shoulder width",
-                            value = project.shoulderWidth,
-                            onValueChange = { value ->
-                                project = project.copy(shoulderWidth = value)
-                            }
-                        )
-
-                        MorphSlider(
-                            label = "Hip width",
-                            value = project.hipWidth,
-                            onValueChange = { value ->
-                                project = project.copy(hipWidth = value)
-                            }
-                        )
-
-                        MorphSlider(
-                            label = "Torso length",
-                            value = project.torsoLength,
-                            onValueChange = { value ->
-                                project = project.copy(torsoLength = value)
-                            }
-                        )
+                        MorphSlider("Height", project.height) {
+                            project = project.copy(height = it)
+                        }
+                        MorphSlider("Build", project.build) {
+                            project = project.copy(build = it)
+                        }
+                        MorphSlider("Shoulder width", project.shoulderWidth) {
+                            project = project.copy(shoulderWidth = it)
+                        }
+                        MorphSlider("Hip width", project.hipWidth) {
+                            project = project.copy(hipWidth = it)
+                        }
+                        MorphSlider("Torso length", project.torsoLength) {
+                            project = project.copy(torsoLength = it)
+                        }
                     }
                 }
             }
@@ -261,45 +215,24 @@ private fun CharacterEditor(store: ProjectStore) {
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
-                    ) {
+                    Column(Modifier.padding(12.dp)) {
                         Text(
                             text = "Face",
                             style = MaterialTheme.typography.titleMedium
                         )
 
-                        MorphSlider(
-                            label = "Head size",
-                            value = project.headSize,
-                            onValueChange = { value ->
-                                project = project.copy(headSize = value)
-                            }
-                        )
-
-                        MorphSlider(
-                            label = "Jaw width",
-                            value = project.jawWidth,
-                            onValueChange = { value ->
-                                project = project.copy(jawWidth = value)
-                            }
-                        )
-
-                        MorphSlider(
-                            label = "Eye spacing",
-                            value = project.eyeSpacing,
-                            onValueChange = { value ->
-                                project = project.copy(eyeSpacing = value)
-                            }
-                        )
-
-                        MorphSlider(
-                            label = "Nose width",
-                            value = project.noseWidth,
-                            onValueChange = { value ->
-                                project = project.copy(noseWidth = value)
-                            }
-                        )
+                        MorphSlider("Head size", project.headSize) {
+                            project = project.copy(headSize = it)
+                        }
+                        MorphSlider("Jaw width", project.jawWidth) {
+                            project = project.copy(jawWidth = it)
+                        }
+                        MorphSlider("Eye spacing", project.eyeSpacing) {
+                            project = project.copy(eyeSpacing = it)
+                        }
+                        MorphSlider("Nose width", project.noseWidth) {
+                            project = project.copy(noseWidth = it)
+                        }
                     }
                 }
             }
@@ -310,21 +243,15 @@ private fun CharacterEditor(store: ProjectStore) {
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
-                    ) {
+                    Column(Modifier.padding(12.dp)) {
                         Text(
                             text = "Appearance",
                             style = MaterialTheme.typography.titleMedium
                         )
 
-                        MorphSlider(
-                            label = "Skin tone",
-                            value = project.skinTone,
-                            onValueChange = { value ->
-                                project = project.copy(skinTone = value)
-                            }
-                        )
+                        MorphSlider("Skin tone", project.skinTone) {
+                            project = project.copy(skinTone = it)
+                        }
                     }
                 }
             }
@@ -335,9 +262,7 @@ private fun CharacterEditor(store: ProjectStore) {
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp)
-                    ) {
+                    Column(Modifier.padding(12.dp)) {
                         Text(
                             text = statusMessage,
                             style = MaterialTheme.typography.bodyMedium
@@ -379,8 +304,8 @@ private fun CharacterEditor(store: ProjectStore) {
                         Spacer(Modifier.height(4.dp))
 
                         Text(
-                            text = "Changes are held in memory until saved. "
-                                + "The current renderer uses a simple mannequin.",
+                            text = "Changes are held in memory until saved. " +
+                                "The current renderer uses a simple mannequin.",
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
@@ -414,7 +339,6 @@ private fun MorphSlider(
                 text = label,
                 style = MaterialTheme.typography.bodyMedium
             )
-
             Text(
                 text = "%.2f".format(value),
                 style = MaterialTheme.typography.labelMedium
