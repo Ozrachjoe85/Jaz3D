@@ -1,3 +1,4 @@
+
 name: Jaz3D Android Build
 
 on:
@@ -11,10 +12,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: jaz3d-android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    name: Build Android Debug APK
+    name: Build Debug APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
@@ -26,23 +32,32 @@ jobs:
           distribution: temurin
           java-version: '17'
           cache: gradle
+          cache-dependency-path: android/**/*.gradle*
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Grant Gradle execute permission
-        run: chmod +x android/gradlew
-        if: ${{ hashFiles('android/gradlew') != '' }}
+      - name: Verify Gradle wrapper
+        working-directory: android
+        run: |
+          if [ ! -f ./gradlew ]; then
+            echo "::error::android/gradlew is missing."
+            echo "Generate and commit the Gradle wrapper before building."
+            exit 1
+          fi
+
+          if [ ! -f ./gradle/wrapper/gradle-wrapper.properties ]; then
+            echo "::error::Gradle wrapper properties are missing."
+            exit 1
+          fi
+
+      - name: Make Gradle wrapper executable
+        working-directory: android
+        run: chmod +x ./gradlew
 
       - name: Build debug APK
         working-directory: android
-        run: |
-          if [ -f ./gradlew ]; then
-            ./gradlew --no-daemon assembleDebug
-          else
-            echo "Gradle wrapper missing: android/gradlew"
-            exit 1
-          fi
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
