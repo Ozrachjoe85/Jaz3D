@@ -1,13 +1,46 @@
+
 package com.jaz3d.app
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -17,60 +50,74 @@ import com.jaz3d.app.storage.ProjectStore
 
 class MainActivity : ComponentActivity() {
 
+    private lateinit var projectStore: ProjectStore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val store = ProjectStore(this)
+        projectStore = ProjectStore(applicationContext)
 
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme()
-            ) {
-                CharacterEditor(store)
+            MaterialTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    CharacterEditor(store = projectStore)
+                }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CharacterEditor(store: ProjectStore) {
     var project by remember {
-        mutableStateOf(store.load() ?: CharacterProject())
+        mutableStateOf(
+            store.load() ?: CharacterProject()
+        )
     }
 
-    var status by remember {
-        mutableStateOf("Ready · Offline")
+    var statusMessage by remember {
+        mutableStateOf("Ready")
     }
 
-    var surface by remember {
-        mutableStateOf<CharacterSurface?>(null)
-    }
-
-    val wide = androidx.compose.ui.platform
-        .LocalConfiguration.current.screenWidthDp >= 700
-
-    fun update(change: (CharacterProject) -> CharacterProject) {
-        project = change(project)
-        surface?.characterRenderer?.character = project
+    var refreshKey by remember {
+        mutableStateOf(0)
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
                 title = {
-                    Text("Jaz3D Character Studio")
+                    Column {
+                        Text("Jaz3D")
+                        Text(
+                            text = "Character Studio",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 },
                 actions = {
                     TextButton(
                         onClick = {
                             try {
                                 store.save(project)
-                                status = "Project saved locally"
-                            } catch (e: Exception) {
-                                status = "Save failed: ${e.message}"
+                                statusMessage = "Project saved"
+                            } catch (exception: Exception) {
+                                statusMessage =
+                                    "Save failed: ${exception.message ?: "unknown error"}"
                             }
                         }
                     ) {
+                        androidx.compose.material3.Icon(
+                            imageVector = Icons.Default.Save,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
                         Text("Save")
                     }
 
@@ -80,166 +127,269 @@ private fun CharacterEditor(store: ProjectStore) {
                                 val loaded = store.load()
                                 if (loaded != null) {
                                     project = loaded
-                                    surface?.characterRenderer?.character = loaded
-                                    status = "Project loaded"
+                                    refreshKey++
+                                    statusMessage = "Project loaded"
                                 } else {
-                                    status = "No saved project found"
+                                    statusMessage = "No saved project found"
                                 }
-                            } catch (e: Exception) {
-                                status = "Load failed: ${e.message}"
+                            } catch (exception: Exception) {
+                                statusMessage =
+                                    "Load failed: ${exception.message ?: "unknown error"}"
                             }
                         }
                     ) {
+                        androidx.compose.material3.Icon(
+                            imageVector = Icons.Default.FileOpen,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
                         Text("Load")
                     }
                 }
             )
         }
-    ) { padding ->
-        if (wide) {
-            Row(
-                Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Column(Modifier.weight(1.5f)) {
-                    CharacterViewport(
-                        project,
-                        { surface = it },
-                        Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                    )
-
-                    Spacer(Modifier.height(8.dp))
-                    Text(status)
-                }
-
-                MorphControls(
-                    project = project,
-                    onUpdate = ::update,
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                Card(
                     modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                )
-            }
-        } else {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(12.dp)
-            ) {
-                CharacterViewport(
-                    project,
-                    { surface = it },
-                    Modifier
                         .fillMaxWidth()
-                        .height(280.dp)
-                )
+                        .padding(horizontal = 12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Text(
+                            text = project.name,
+                            style = MaterialTheme.typography.titleMedium
+                        )
 
-                Spacer(Modifier.height(8.dp))
-                Text(status)
-                Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Drag the viewport to rotate the mannequin.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
 
-                MorphControls(
-                    project,
-                    ::update,
-                    Modifier.weight(1f)
-                )
+                        Spacer(Modifier.height(8.dp))
+
+                        // The renderer is a basic prototype mannequin,
+                        // not a production-quality human mesh.
+                        key(refreshKey) {
+                            AndroidView(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(300.dp),
+                                factory = { context ->
+                                    CharacterSurface(context).apply {
+                                        setCharacter(project)
+                                    }
+                                },
+                                update = { view ->
+                                    view.setCharacter(project)
+                                }
+                            )
+                        }
+                    }
+                }
             }
-        }
-    }
-}
 
-@Composable
-private fun CharacterViewport(
-    project: CharacterProject,
-    onSurface: (CharacterSurface) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    AndroidView(
-        modifier = modifier,
-        factory = { context ->
-            CharacterSurface(context).also {
-                it.characterRenderer.character = project
-                onSurface(it)
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Text(
+                            text = "Body",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        MorphSlider(
+                            label = "Height",
+                            value = project.height,
+                            onValueChange = { value ->
+                                project = project.copy(height = value)
+                            }
+                        )
+
+                        MorphSlider(
+                            label = "Build",
+                            value = project.build,
+                            onValueChange = { value ->
+                                project = project.copy(build = value)
+                            }
+                        )
+
+                        MorphSlider(
+                            label = "Shoulder width",
+                            value = project.shoulderWidth,
+                            onValueChange = { value ->
+                                project = project.copy(shoulderWidth = value)
+                            }
+                        )
+
+                        MorphSlider(
+                            label = "Hip width",
+                            value = project.hipWidth,
+                            onValueChange = { value ->
+                                project = project.copy(hipWidth = value)
+                            }
+                        )
+
+                        MorphSlider(
+                            label = "Torso length",
+                            value = project.torsoLength,
+                            onValueChange = { value ->
+                                project = project.copy(torsoLength = value)
+                            }
+                        )
+                    }
+                }
             }
-        },
-        update = {
-            it.characterRenderer.character = project
-        }
-    )
-}
 
-@Composable
-private fun MorphControls(
-    project: CharacterProject,
-    onUpdate: ((CharacterProject) -> CharacterProject) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier
-            .verticalScroll(rememberScrollState())
-            .padding(8.dp)
-    ) {
-        Text(
-            "Character Parameters",
-            style = MaterialTheme.typography.titleLarge
-        )
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Text(
+                            text = "Face",
+                            style = MaterialTheme.typography.titleMedium
+                        )
 
-        Spacer(Modifier.height(8.dp))
+                        MorphSlider(
+                            label = "Head size",
+                            value = project.headSize,
+                            onValueChange = { value ->
+                                project = project.copy(headSize = value)
+                            }
+                        )
 
-        Text("Body")
+                        MorphSlider(
+                            label = "Jaw width",
+                            value = project.jawWidth,
+                            onValueChange = { value ->
+                                project = project.copy(jawWidth = value)
+                            }
+                        )
 
-        MorphSlider("Height", project.height) {
-            onUpdate { p -> p.copy(height = it) }
-        }
+                        MorphSlider(
+                            label = "Eye spacing",
+                            value = project.eyeSpacing,
+                            onValueChange = { value ->
+                                project = project.copy(eyeSpacing = value)
+                            }
+                        )
 
-        MorphSlider("Build", project.build) {
-            onUpdate { p -> p.copy(build = it) }
-        }
+                        MorphSlider(
+                            label = "Nose width",
+                            value = project.noseWidth,
+                            onValueChange = { value ->
+                                project = project.copy(noseWidth = value)
+                            }
+                        )
+                    }
+                }
+            }
 
-        MorphSlider("Shoulder width", project.shoulderWidth) {
-            onUpdate { p -> p.copy(shoulderWidth = it) }
-        }
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Text(
+                            text = "Appearance",
+                            style = MaterialTheme.typography.titleMedium
+                        )
 
-        MorphSlider("Hip width", project.hipWidth) {
-            onUpdate { p -> p.copy(hipWidth = it) }
-        }
+                        MorphSlider(
+                            label = "Skin tone",
+                            value = project.skinTone,
+                            onValueChange = { value ->
+                                project = project.copy(skinTone = value)
+                            }
+                        )
+                    }
+                }
+            }
 
-        MorphSlider("Torso length", project.torsoLength) {
-            onUpdate { p -> p.copy(torsoLength = it) }
-        }
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp)
+                    ) {
+                        Text(
+                            text = statusMessage,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
 
-        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                        Spacer(Modifier.height(8.dp))
 
-        Text("Face")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    try {
+                                        store.save(project)
+                                        statusMessage = "Project saved locally"
+                                    } catch (exception: Exception) {
+                                        statusMessage =
+                                            "Save failed: ${exception.message ?: "unknown error"}"
+                                    }
+                                }
+                            ) {
+                                Text("Save project")
+                            }
 
-        MorphSlider("Head size", project.headSize) {
-            onUpdate { p -> p.copy(headSize = it) }
-        }
+                            Button(
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    project = CharacterProject()
+                                    refreshKey++
+                                    statusMessage = "New character created"
+                                }
+                            ) {
+                                Text("New character")
+                            }
+                        }
 
-        MorphSlider("Jaw width", project.jawWidth) {
-            onUpdate { p -> p.copy(jawWidth = it) }
-        }
+                        Spacer(Modifier.height(4.dp))
 
-        MorphSlider("Eye spacing", project.eyeSpacing) {
-            onUpdate { p -> p.copy(eyeSpacing = it) }
-        }
+                        Text(
+                            text = "Changes are held in memory until saved. "
+                                + "The current renderer uses a simple mannequin.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
 
-        MorphSlider("Nose width", project.noseWidth) {
-            onUpdate { p -> p.copy(noseWidth = it) }
-        }
-
-        HorizontalDivider(Modifier.padding(vertical = 12.dp))
-
-        Text("Appearance")
-
-        MorphSlider("Skin tone", project.skinTone) {
-            onUpdate { p -> p.copy(skinTone = it) }
+            item {
+                Spacer(Modifier.height(8.dp))
+            }
         }
     }
 }
@@ -248,17 +398,34 @@ private fun MorphControls(
 private fun MorphSlider(
     label: String,
     value: Float,
-    onChange: (Float) -> Unit
+    onValueChange: (Float) -> Unit
 ) {
-    Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth()) {
-            Text(label, modifier = Modifier.weight(1f))
-            Text("${(value * 100).toInt()}%")
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            Text(
+                text = "%.2f".format(value),
+                style = MaterialTheme.typography.labelMedium
+            )
         }
 
         Slider(
-            value = value,
-            onValueChange = onChange,
+            value = value.coerceIn(0f, 1f),
+            onValueChange = { newValue ->
+                onValueChange(newValue.coerceIn(0f, 1f))
+            },
             valueRange = 0f..1f
         )
     }
