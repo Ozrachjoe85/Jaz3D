@@ -1,0 +1,39 @@
+
+#!/usr/bin/env sh
+
+# Jaz3D Gradle launcher
+# Downloads and runs Gradle 8.11.1 without requiring a wrapper JAR.
+# Intended for Linux and GitHub Actions.
+
+set -eu
+
+GRADLE_VERSION="8.11.1"
+GRADLE_HOME="${GRADLE_USER_HOME:-$HOME/.gradle}"
+GRADLE_DIR="$GRADLE_HOME/jaz3d-gradle"
+GRADLE_BIN="$GRADLE_DIR/gradle-$GRADLE_VERSION/bin/gradle"
+GRADLE_ZIP="$GRADLE_DIR/gradle-$GRADLE_VERSION-bin.zip"
+GRADLE_URL="https://services.gradle.org/distributions/gradle-$GRADLE_VERSION-bin.zip"
+
+mkdir -p "$GRADLE_DIR"
+
+if [ ! -x "$GRADLE_BIN" ]; then
+    if [ ! -f "$GRADLE_ZIP" ]; then
+        if command -v curl >/dev/null 2>&1; then
+            curl -fL "$GRADLE_URL" -o "$GRADLE_ZIP"
+        elif command -v wget >/dev/null 2>&1; then
+            wget "$GRADLE_URL" -O "$GRADLE_ZIP"
+        else
+            echo "Error: curl or wget is required to download Gradle." >&2
+            exit 1
+        fi
+    fi
+
+    if ! command -v unzip >/dev/null 2>&1; then
+        echo "Error: unzip is required to extract Gradle." >&2
+        exit 1
+    fi
+
+    unzip -q -o "$GRADLE_ZIP" -d "$GRADLE_DIR"
+fi
+
+exec "$GRADLE_BIN" "$@"
