@@ -3,236 +3,99 @@ package com.jaz3d.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import org.json.JSONObject
-import java.io.File
-
-private val Ink = Color(0xFF101318)
-private val Panel = Color(0xFF1A1F27)
-private val Panel2 = Color(0xFF242B35)
-private val Accent = Color(0xFF8DB8FF)
-private val Muted = Color(0xFFABB5C3)
+import androidx.compose.ui.viewinterop.AndroidView
+import com.jaz3d.app.model.CharacterProject
+import com.jaz3d.app.render.CharacterSurface
+import com.jaz3d.app.storage.ProjectStore
 
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val store = ProjectStore(this)
+
         setContent {
             MaterialTheme(
-                colorScheme = darkColorScheme(
-                    background = Ink,
-                    surface = Panel,
-                    primary = Accent,
-                    onBackground = Color.White,
-                    onSurface = Color.White
-                )
+                colorScheme = darkColorScheme()
             ) {
-                CharacterStudioScreen(
-                    onSave = { profile ->
-                        File(
-                            filesDir,
-                            "character-profile.json"
-                        ).writeText(profile.toString(2))
-                    },
-                    onLoad = {
-                        val file = File(
-                            filesDir,
-                            "character-profile.json"
-                        )
-
-                        if (file.exists()) {
-                            JSONObject(file.readText())
-                        } else {
-                            JSONObject()
-                        }
-                    }
-                )
+                CharacterEditor(store)
             }
         }
     }
 }
 
 @Composable
-private fun CharacterStudioScreen(
-    onSave: (JSONObject) -> Unit,
-    onLoad: () -> JSONObject
-) {
-    var selectedTab by remember { mutableStateOf("Body") }
+private fun CharacterEditor(store: ProjectStore) {
+    var project by remember {
+        mutableStateOf(store.load() ?: CharacterProject())
+    }
+
     var status by remember {
-        mutableStateOf("Local project · offline ready")
-    }
-    var characterName by remember {
-        mutableStateOf("Character 01")
+        mutableStateOf("Ready · Offline")
     }
 
-    val morphs = remember {
-        mutableStateMapOf(
-            "Height" to 50f,
-            "Build" to 50f,
-            "Shoulder width" to 50f,
-            "Torso length" to 50f,
-            "Hip width" to 50f,
-            "Arm length" to 50f,
-            "Jaw width" to 50f,
-            "Eye spacing" to 50f,
-            "Nose width" to 50f
-        )
+    var surface by remember {
+        mutableStateOf<CharacterSurface?>(null)
     }
 
-    val wide =
-        androidx.compose.ui.platform.LocalConfiguration
-            .current.screenWidthDp >= 700
+    val wide = androidx.compose.ui.platform
+        .LocalConfiguration.current.screenWidthDp >= 700
+
+    fun update(change: (CharacterProject) -> CharacterProject) {
+        project = change(project)
+        surface?.characterRenderer?.character = project
+    }
 
     Scaffold(
-        containerColor = Ink,
         topBar = {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(Panel)
-                    .padding(
-                        horizontal = 18.dp,
-                        vertical = 14.dp
-                    ),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Default.Person,
-                    contentDescription = null,
-                    tint = Accent,
-                    modifier = Modifier.size(28.dp)
-                )
-
-                Spacer(Modifier.width(10.dp))
-
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        "JAZ3D",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.2.sp
-                    )
-
-                    Text(
-                        "Portable character workshop",
-                        color = Muted,
-                        fontSize = 12.sp
-                    )
-                }
-
-                IconButton(
-                    onClick = {
-                        val project = onLoad()
-                        val character =
-                            project.optJSONObject("character")
-                                ?: project
-
-                        if (character.has("name")) {
-                            characterName = character.optString(
-                                "name",
-                                characterName
-                            )
-                        }
-
-                        val values =
-                            character.optJSONObject("morphs")
-
-                        val ids = mapOf(
-                            "Height" to "height",
-                            "Build" to "build",
-                            "Shoulder width" to "shoulderWidth",
-                            "Torso length" to "torsoLength",
-                            "Hip width" to "hipWidth",
-                            "Arm length" to "armLength",
-                            "Jaw width" to "jawWidth",
-                            "Eye spacing" to "eyeSpacing",
-                            "Nose width" to "noseWidth"
-                        )
-
-                        if (values != null) {
-                            ids.forEach { (label, id) ->
-                                if (values.has(id)) {
-                                    morphs[label] =
-                                        (
-                                            values.optDouble(id, 0.5) *
-                                                100.0
-                                        ).toFloat().coerceIn(0f, 100f)
-                                }
+            TopAppBar(
+                title = {
+                    Text("Jaz3D Character Studio")
+                },
+                actions = {
+                    TextButton(
+                        onClick = {
+                            try {
+                                store.save(project)
+                                status = "Project saved locally"
+                            } catch (e: Exception) {
+                                status = "Save failed: ${e.message}"
                             }
                         }
-
-                        status = if (project.length() > 0) {
-                            "Project loaded"
-                        } else {
-                            "No saved project yet"
-                        }
+                    ) {
+                        Text("Save")
                     }
-                ) {
-                    Icon(
-                        Icons.Default.FolderOpen,
-                        contentDescription = "Load local project"
-                    )
-                }
 
-                IconButton(
-                    onClick = {
-                        val ids = mapOf(
-                            "Height" to "height",
-                            "Build" to "build",
-                            "Shoulder width" to "shoulderWidth",
-                            "Torso length" to "torsoLength",
-                            "Hip width" to "hipWidth",
-                            "Arm length" to "armLength",
-                            "Jaw width" to "jawWidth",
-                            "Eye spacing" to "eyeSpacing",
-                            "Nose width" to "noseWidth"
-                        )
-
-                        val values = JSONObject()
-
-                        ids.forEach { (label, id) ->
-                            values.put(
-                                id,
-                                (morphs[label] ?: 50f).toDouble() / 100.0
-                            )
+                    TextButton(
+                        onClick = {
+                            try {
+                                val loaded = store.load()
+                                if (loaded != null) {
+                                    project = loaded
+                                    surface?.characterRenderer?.character = loaded
+                                    status = "Project loaded"
+                                } else {
+                                    status = "No saved project found"
+                                }
+                            } catch (e: Exception) {
+                                status = "Load failed: ${e.message}"
+                            }
                         }
-
-                        val character = JSONObject()
-                            .put("name", characterName)
-                            .put("morphs", values)
-
-                        val project = JSONObject()
-                            .put("schemaVersion", 1)
-                            .put("project", "Jaz3D")
-                            .put("character", character)
-
-                        onSave(project)
-                        status = "Saved on this device"
+                    ) {
+                        Text("Load")
                     }
-                ) {
-                    Icon(
-                        Icons.Default.Save,
-                        contentDescription = "Save project"
-                    )
                 }
-            }
+            )
         }
     ) { padding ->
-
         if (wide) {
             Row(
                 Modifier
@@ -241,39 +104,23 @@ private fun CharacterStudioScreen(
                     .padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(
-                    Modifier
-                        .weight(1.5f)
-                        .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    CharacterHeader(
-                        characterName,
-                        { characterName = it }
-                    )
-
-                    ViewportPlaceholder(
+                Column(Modifier.weight(1.5f)) {
+                    CharacterViewport(
+                        project,
+                        { surface = it },
                         Modifier
-                            .weight(1f)
                             .fillMaxWidth()
+                            .weight(1f)
                     )
 
-                    ActionRow(morphs) {
-                        status = it
-                    }
-
-                    Text(
-                        status,
-                        color = Muted,
-                        fontSize = 12.sp
-                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(status)
                 }
 
-                MorphPanel(
-                    selectedTab,
-                    { selectedTab = it },
-                    morphs,
-                    Modifier
+                MorphControls(
+                    project = project,
+                    onUpdate = ::update,
+                    modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
                 )
@@ -283,37 +130,24 @@ private fun CharacterStudioScreen(
                 Modifier
                     .fillMaxSize()
                     .padding(padding)
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(12.dp)
             ) {
-                CharacterHeader(
-                    characterName,
-                    { characterName = it }
-                )
-
-                ViewportPlaceholder(
+                CharacterViewport(
+                    project,
+                    { surface = it },
                     Modifier
                         .fillMaxWidth()
-                        .height(300.dp)
+                        .height(280.dp)
                 )
 
-                ActionRow(morphs) {
-                    status = it
-                }
+                Spacer(Modifier.height(8.dp))
+                Text(status)
+                Spacer(Modifier.height(8.dp))
 
-                Text(
-                    status,
-                    color = Muted,
-                    fontSize = 12.sp
-                )
-
-                MorphPanel(
-                    selectedTab,
-                    { selectedTab = it },
-                    morphs,
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
+                MorphControls(
+                    project,
+                    ::update,
+                    Modifier.weight(1f)
                 )
             }
         }
@@ -321,229 +155,111 @@ private fun CharacterStudioScreen(
 }
 
 @Composable
-private fun CharacterHeader(
-    name: String,
-    onNameChange: (String) -> Unit
+private fun CharacterViewport(
+    project: CharacterProject,
+    onSurface: (CharacterSurface) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    OutlinedTextField(
-        value = name,
-        onValueChange = onNameChange,
-        label = { Text("Character name") },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Accent,
-            unfocusedBorderColor = Panel2
-        )
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            CharacterSurface(context).also {
+                it.characterRenderer.character = project
+                onSurface(it)
+            }
+        },
+        update = {
+            it.characterRenderer.character = project
+        }
     )
 }
 
 @Composable
-private fun ViewportPlaceholder(
-    modifier: Modifier = Modifier
-) {
-    // Placeholder until the native 3D renderer and mesh pipeline
-    // are implemented.
-
-    Box(
-        modifier.background(
-            Panel,
-            RoundedCornerShape(18.dp)
-        ),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Icon(
-                Icons.Default.ViewInAr,
-                contentDescription = null,
-                tint = Accent,
-                modifier = Modifier.size(54.dp)
-            )
-
-            Text(
-                "3D VIEWPORT",
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp
-            )
-
-            Text(
-                "Renderer + base mesh are next",
-                color = Muted,
-                fontSize = 12.sp
-            )
-
-            Text(
-                "Foldable-aware workspace",
-                color = Muted,
-                fontSize = 11.sp
-            )
-        }
-    }
-}
-
-@Composable
-private fun ActionRow(
-    morphs: MutableMap<String, Float>,
-    setStatus: (String) -> Unit
-) {
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        FilledTonalButton(
-            onClick = {
-                setStatus(
-                    "Undo is planned for the editing milestone"
-                )
-            },
-            modifier = Modifier.weight(1f)
-        ) {
-            Icon(Icons.Default.Undo, contentDescription = null)
-            Spacer(Modifier.width(4.dp))
-            Text("Undo")
-        }
-
-        FilledTonalButton(
-            onClick = {
-                morphs.keys.forEach {
-                    morphs[it] = 50f
-                }
-                setStatus("Morphs reset")
-            },
-            modifier = Modifier.weight(1f)
-        ) {
-            Icon(Icons.Default.Refresh, contentDescription = null)
-            Spacer(Modifier.width(4.dp))
-            Text("Reset")
-        }
-    }
-}
-
-@Composable
-private fun MorphPanel(
-    tab: String,
-    onTab: (String) -> Unit,
-    morphs: MutableMap<String, Float>,
+private fun MorphControls(
+    project: CharacterProject,
+    onUpdate: ((CharacterProject) -> CharacterProject) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier
-            .background(
-                Panel,
-                RoundedCornerShape(18.dp)
-            )
-            .padding(14.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(8.dp)
     ) {
         Text(
-            "EDIT CHARACTER",
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.2.sp
+            "Character Parameters",
+            style = MaterialTheme.typography.titleLarge
         )
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
 
-        val tabs = listOf(
-            "Body",
-            "Face",
-            "Anatomy",
-            "Materials"
-        )
+        Text("Body")
 
-        ScrollableTabRow(
-            selectedTabIndex = tabs.indexOf(tab),
-            containerColor = Panel,
-            contentColor = Accent,
-            edgePadding = 0.dp
-        ) {
-            tabs.forEach { name ->
-                Tab(
-                    selected = tab == name,
-                    onClick = { onTab(name) },
-                    text = { Text(name) }
-                )
-            }
+        MorphSlider("Height", project.height) {
+            onUpdate { p -> p.copy(height = it) }
         }
 
-        Spacer(Modifier.height(10.dp))
-
-        Column(
-            Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-        ) {
-            val controls = when (tab) {
-                "Face" -> listOf(
-                    "Jaw width",
-                    "Eye spacing",
-                    "Nose width"
-                )
-
-                "Anatomy" -> listOf(
-                    "Torso length",
-                    "Hip width",
-                    "Shoulder width"
-                )
-
-                "Materials" -> emptyList()
-
-                else -> listOf(
-                    "Height",
-                    "Build",
-                    "Shoulder width",
-                    "Torso length",
-                    "Hip width",
-                    "Arm length"
-                )
-            }
-
-            if (tab == "Materials") {
-                Text(
-                    "Material controls will arrive with the rendering pipeline.",
-                    color = Muted,
-                    fontSize = 13.sp
-                )
-            } else {
-                controls.forEach { key ->
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 5.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                key,
-                                modifier = Modifier.weight(1f),
-                                fontSize = 13.sp
-                            )
-
-                            Text(
-                                "${morphs[key]?.toInt() ?: 50}%",
-                                color = Accent,
-                                fontSize = 12.sp
-                            )
-                        }
-
-                        Slider(
-                            value = morphs[key] ?: 50f,
-                            onValueChange = {
-                                morphs[key] = it
-                            },
-                            valueRange = 0f..100f
-                        )
-                    }
-                }
-            }
+        MorphSlider("Build", project.build) {
+            onUpdate { p -> p.copy(build = it) }
         }
 
-        Text(
-            "MVP · parameter UI only",
-            color = Muted,
-            fontSize = 11.sp
+        MorphSlider("Shoulder width", project.shoulderWidth) {
+            onUpdate { p -> p.copy(shoulderWidth = it) }
+        }
+
+        MorphSlider("Hip width", project.hipWidth) {
+            onUpdate { p -> p.copy(hipWidth = it) }
+        }
+
+        MorphSlider("Torso length", project.torsoLength) {
+            onUpdate { p -> p.copy(torsoLength = it) }
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+
+        Text("Face")
+
+        MorphSlider("Head size", project.headSize) {
+            onUpdate { p -> p.copy(headSize = it) }
+        }
+
+        MorphSlider("Jaw width", project.jawWidth) {
+            onUpdate { p -> p.copy(jawWidth = it) }
+        }
+
+        MorphSlider("Eye spacing", project.eyeSpacing) {
+            onUpdate { p -> p.copy(eyeSpacing = it) }
+        }
+
+        MorphSlider("Nose width", project.noseWidth) {
+            onUpdate { p -> p.copy(noseWidth = it) }
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+
+        Text("Appearance")
+
+        MorphSlider("Skin tone", project.skinTone) {
+            onUpdate { p -> p.copy(skinTone = it) }
+        }
+    }
+}
+
+@Composable
+private fun MorphSlider(
+    label: String,
+    value: Float,
+    onChange: (Float) -> Unit
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth()) {
+            Text(label, modifier = Modifier.weight(1f))
+            Text("${(value * 100).toInt()}%")
+        }
+
+        Slider(
+            value = value,
+            onValueChange = onChange,
+            valueRange = 0f..1f
         )
     }
 }
