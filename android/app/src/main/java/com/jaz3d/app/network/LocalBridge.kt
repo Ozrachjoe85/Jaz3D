@@ -1,6 +1,7 @@
 
 package com.jaz3d.app.network
 
+import com.jaz3d.app.model.CharacterProject
 import com.jaz3d.app.storage.ProjectStore
 import org.json.JSONObject
 import java.io.BufferedInputStream
@@ -12,14 +13,13 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Development-only LAN bridge for Jaz3D.
+ * Development LAN bridge for Jaz3D.
  *
- * Routes:
  * GET  /health
  * GET  /character
  * POST /character
  *
- * Character routes require X-Jaz3D-Token.
+ * Character endpoints require X-Jaz3D-Token.
  */
 class LocalBridge(
     private val store: ProjectStore,
@@ -54,7 +54,7 @@ class LocalBridge(
                         }
                     }
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 running.set(false)
             } finally {
                 serverSocket = null
@@ -68,7 +68,7 @@ class LocalBridge(
         try {
             serverSocket?.close()
         } catch (_: Exception) {
-            // Already closed.
+            // The socket may already be closed.
         }
 
         serverSocket = null
@@ -104,6 +104,11 @@ class LocalBridge(
                 }
             }
 
+            if (method == "OPTIONS") {
+                respond(output, 204, "No Content", "")
+                return
+            }
+
             if (path == "/health" && method == "GET") {
                 respond(
                     output,
@@ -122,9 +127,7 @@ class LocalBridge(
                 return
             }
 
-            if (token.isBlank() ||
-                headers["x-jaz3d-token"] != token
-            ) {
+            if (token.isBlank() || headers["x-jaz3d-token"] != token) {
                 respond(output, 401, "Unauthorized", """{"error":"Unauthorized"}""")
                 return
             }
@@ -148,8 +151,21 @@ class LocalBridge(
                         return
                     }
 
-                    val bodyBytes = input.readNBytes(contentLength)
-                    if (bodyBytes.size != contentLength) {
+                    val bodyBytes = ByteArray(contentLength)
+                    var totalRead = 0
+
+                    while (totalRead < contentLength) {
+                        val count = input.read(
+                            bodyBytes,
+                            totalRead,
+                            contentLength - totalRead
+                        )
+
+                        if (count == -1) break
+                        totalRead += count
+                    }
+
+                    if (totalRead != contentLength) {
                         respond(
                             output,
                             400,
@@ -162,9 +178,11 @@ class LocalBridge(
                     val body = String(bodyBytes, StandardCharsets.UTF_8)
 
                     try {
-                        // Validate that the body is JSON before importing.
                         JSONObject(body)
-                        store.importJson(body)
+                        val project = CharacterProject.fromJson(body)
+
+                        // Supply both required arguments to ProjectStore.
+                        store.importJson(body, project)
 
                         respond(
                             output,
@@ -200,7 +218,7 @@ class LocalBridge(
                     """{"error":"Request failed"}"""
                 )
             } catch (_: Exception) {
-                // Client may already have disconnected.
+                // The client may already have disconnected.
             }
         }
     }
@@ -211,6 +229,7 @@ class LocalBridge(
 
         while (bytes.size < MAX_HEADER_LINE_BYTES) {
             val current = input.read()
+
             if (current == -1) {
                 if (bytes.isEmpty()) return null
                 break
