@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * GET  /character
  * POST /character
  *
- * Character endpoints require X-Jaz3D-Token.
+ * Character endpoints require the X-Jaz3D-Token header.
  */
 class LocalBridge(
     private val store: ProjectStore,
@@ -32,8 +32,17 @@ class LocalBridge(
     @Volatile
     private var serverSocket: ServerSocket? = null
 
+    @Volatile
+    private var currentProject: CharacterProject = CharacterProject()
+
     fun start() {
         if (!running.compareAndSet(false, true)) return
+
+        currentProject = try {
+            store.load() ?: CharacterProject()
+        } catch (_: Exception) {
+            CharacterProject()
+        }
 
         workers.execute {
             try {
@@ -134,7 +143,10 @@ class LocalBridge(
 
             when (method) {
                 "GET" -> {
-                    respond(output, 200, "OK", store.exportJson())
+                    val json = synchronized(this) {
+                        store.exportJson(currentProject)
+                    }
+                    respond(output, 200, "OK", json)
                 }
 
                 "POST" -> {
@@ -178,11 +190,15 @@ class LocalBridge(
                     val body = String(bodyBytes, StandardCharsets.UTF_8)
 
                     try {
+                        // Validate and parse the incoming project.
                         JSONObject(body)
-                        val project = CharacterProject.fromJson(body)
+                        val importedProject = store.importJson(body)
 
-                        // Supply both required arguments to ProjectStore.
-                        store.importJson(body, project)
+                        // Persist it and update the bridge's active project.
+                        synchronized(this) {
+                            store.save(importedProject)
+                            currentProject = importedProject
+                        }
 
                         respond(
                             output,
